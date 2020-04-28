@@ -1,41 +1,22 @@
-from scipy.io import wavfile
-from scipy.signal import spectrogram
-import matplotlib.pyplot as plt
-import numpy as np
-import ecoacoustics
+from ecoacoustics.types import SoundRecord
 
 # Load a sound from a wav file
-filename = './audio/LINE_2003-10-30_20_00_34.wav'
+filename = './audio/bird.wav'
+sound_record = SoundRecord(filename)
 
 ## Calculate acoustic indices
 
-# All indices of interest can be ported from https://github.com/ljvillanueva/soundecology
-# They go for 512-point hamming
-
 # Acoustic Complexity Index (ACI)
 # - A new methodology to infer the singing activity of an avian community: The Acoustic Complexity Index (ACI)
-aic = ecoacoustics.acoustic_complexity(filename)
+ACI = sound_record.acoustic_complexity
 
 # Acoustic Diversity Index (ADI)
-adi = ecoacoustics.acoustic_diversity(data, fs)
+ADI = sound_record.acoustic_diversity
 
-# Acoustic Evenness (AEve)
-aeve = ecoacoustics.acoustic_evenness(data, fs)
+# Acoustic Evenness (AE)
+AEve = sound_record.acoustic_evenness
 
-# Bioacoustic Index (Bio)
-bio = ecoacoustics.bioacoustic_index(data, fs)
-
-# Acoustic Entropy (H)
-h = ecoacoustics.acoustic_entropy(data, fs)
-
-# Median of the amplitude envelope (M)
-medenv = ecoacoustics.median_envelope(data, fs)
-
-# Normalized Difference Soundscape Index (NSDI)
-ndsi = exoacoustics.normalized_difference(data, fs)
-
-# Write indices to a file
-
-# Generate a cochleagram
+print(f"ACI = {ACI}; ADI = {ADI}; AEve = {AEve}")
 
 # Plot results
+sound_record.plot_spectrogram(min_freq=2e3, max_freq=8e3)

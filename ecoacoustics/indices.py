@@ -1,34 +1,52 @@
-import numpy as np
-from scipy.io import wavfile
+from dataclasses import dataclass
 from scipy.signal import spectrogram
+import numpy as np
+from .utilities import gini_coefficient
+
+# Constants
+EPSILON = 1e-10
 
 
-def acoustic_complexity(filename: str, j=5.0, nfft=512) -> float:
+@dataclass
+class SpectrogramData:
+    def __init__(self, raw_samples: np.ndarray, fs: float, nfft: int = 512):
+        self._duration = raw_samples.shape[0] / fs
+        self._frequencies, self._times, self._values = spectrogram(raw_samples, fs=fs,
+                                                                   nperseg=nfft,
+                                                                   noverlap=0,
+                                                                   window='hamming',
+                                                                   detrend=False,
+                                                                   mode='magnitude')
+        # For compatibility to soundecology R package
+        self._values = self._values[:-1, :]
+        self._frequencies = self._frequencies[:-1]
 
-    # Read the audio file
-    fs, data = wavfile.read(filename)
+    @property
+    def values(self):
+        return self._values
 
-    # Calculate the spectrogram
-    f, t, Sxx = spectrogram(data, fs=fs,
-                     nperseg=nfft,
-                     noverlap=0,
-                     window='hamming',
-                     detrend=False,
-                     mode='magnitude')
+    @property
+    def frequencies(self):
+        return self._frequencies
 
-    # For compatibility with Soundecology R package, remove last frequency bin
-    # Numbers may still differ marginally due to FFT implementations
-    Sxx = Sxx[:-1, :]
-    f = f[:-1]
+    @property
+    def times(self):
+        return self._times
 
+    @property
+    def duration(self):
+        return self._duration
+
+
+def acoustic_complexity(spectrogram_data: SpectrogramData, j=5.0) -> float:
     # Step through the spectrogram in chunks of length j seconds
-    duration = len(data) / fs
-    number_of_epochs = int(np.floor(duration / j))
+    t = spectrogram_data.times
+    number_of_epochs = int(np.floor(spectrogram_data.duration / j))
     ACI_per_chunk = np.zeros(number_of_epochs)
 
     for i in range(number_of_epochs):
         t1 = i * j
-        chunk = Sxx[:, (t >= t1) & (t < t1 + j)]
+        chunk = spectrogram_data.values[:, (t >= t1) & (t < t1 + j)]
         diffs = np.abs(chunk[:, 1:] - chunk[:, :-1])
         diff_sums = np.sum(diffs, axis=1)
         row_sums = np.sum(chunk, axis=1)
@@ -38,13 +56,48 @@ def acoustic_complexity(filename: str, j=5.0, nfft=512) -> float:
     return float(np.sum(ACI_per_chunk))
 
 
-def acoustic_diversity(filename: str, j=5.0, nfft=512) -> float:
-    
-    pass
+def acoustic_diversity(spectrogram_data: SpectrogramData,
+                       db_threshold=-50.0,
+                       maximum_frequency=10000.0,
+                       frequency_step=1000.0) -> float:
+    # Get the normalised spectrogram in db
+    db_spectrogram = 20 * np.log10(np.clip(spectrogram_data.values, EPSILON, None) / spectrogram_data.values.max())
+
+    # In steps of frequency_step Hz, count the proportion of spectro-temporal bins in each range of frequencies that are
+    # above the threshold value
+    number_of_frequency_bins = int(np.floor(maximum_frequency / frequency_step))
+    f = spectrogram_data.frequencies
+    proportions = np.zeros(number_of_frequency_bins)
+
+    for i in range(number_of_frequency_bins):
+        bins = db_spectrogram[(f >= i * frequency_step) & (f < (i + 1) * frequency_step), :]
+        proportions[i] = np.count_nonzero(bins > db_threshold) / np.size(bins)
+        proportions[i] = np.clip(proportions[i], EPSILON, None)
+
+    # Normalise
+    proportions = proportions / sum(proportions)
+
+    return -sum(proportions * np.log2(proportions))
 
 
-def acoustic_evenness(signal: np.array, fs: float) -> float:
-    pass
+def acoustic_evenness(spectrogram_data: SpectrogramData,
+                      db_threshold=-50.0,
+                      maximum_frequency=10000.0,
+                      frequency_step=1000.0) -> float:
+    # Get the normalised spectrogram in db
+    db_spectrogram = 20 * np.log10(np.clip(spectrogram_data.values, EPSILON, None) / spectrogram_data.values.max())
+
+    # In steps of frequency_step Hz, count the proportion of spectro-temporal bins in each range of frequencies that are
+    # above the threshold value
+    number_of_frequency_bins = int(np.floor(maximum_frequency / frequency_step))
+    f = spectrogram_data.frequencies
+    proportions = np.zeros(number_of_frequency_bins)
+
+    for i in range(number_of_frequency_bins):
+        bins = db_spectrogram[(f >= i * frequency_step) & (f < (i + 1) * frequency_step), :]
+        proportions[i] = np.count_nonzero(bins > db_threshold) / np.size(bins)
+
+    return gini_coefficient(proportions)
 
 
 def bioacoustic_index(signal: np.array, fs: float) -> float:
